@@ -48,7 +48,11 @@ def _get_client() -> anthropic.Anthropic:
         If the environment variable is absent.
     """
     # Prefer Streamlit secrets (used on Streamlit Cloud), fall back to env var
-    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY")
+    except Exception:
+        api_key = None
+    api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise EnvironmentError(
             "ANTHROPIC_API_KEY is not set. "
