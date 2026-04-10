@@ -1,8 +1,7 @@
 """
 app.py
 ------
-Streamlit entry point for the AI-Powered Document Intelligence & Semantic
-Search System.
+Streamlit entry point for InferLens — RAG-Powered Document Intelligence.
 
 Run with:
     streamlit run app.py
@@ -32,7 +31,7 @@ from generation import answer_from_context, summarize_document
 load_dotenv()
 
 st.set_page_config(
-    page_title="DocuMind",
+    page_title="InferLens",
     page_icon="📄",
     layout="wide",
 )
@@ -374,7 +373,7 @@ with st.sidebar:
         <div class="sidebar-brand">
             <span style="font-size:22px;">📄</span>
             <div>
-                <div class="brand-name">DocuMind</div>
+                <div class="brand-name">InferLens</div>
             </div>
             <span class="brand-tag">RAG</span>
         </div>
@@ -613,7 +612,7 @@ st.markdown(
     """
     <div class="app-footer">
         <div class="dot"></div>
-        DocuMind &nbsp;·&nbsp; claude-sonnet-4-20250514 &nbsp;·&nbsp; all-MiniLM-L6-v2 &nbsp;·&nbsp; © Korey Dillon 2026
+        InferLens &nbsp;·&nbsp; claude-sonnet-4-20250514 &nbsp;·&nbsp; all-MiniLM-L6-v2 &nbsp;·&nbsp; © Korey Dillon 2026
     </div>
     """,
     unsafe_allow_html=True,
