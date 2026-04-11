@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: inferlens
+    runtime: docker
+    repo: https://github.com/koreydillon/documind
+    branch: main
+    plan: starter
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
