@@ -21,6 +21,7 @@ import re
 import uuid
 
 import streamlit as st
+import extra_streamlit_components as stx
 from dotenv import load_dotenv
 
 from ingestion import Chunk, extract_pages_from_pdf, extract_text_from_pdf, chunk_pages
@@ -50,6 +51,17 @@ analytics.init_db()
 
 ADMIN_TOKEN = os.getenv("INFERLENS_ADMIN_TOKEN", "")
 PUBLIC_BASE_URL = os.getenv("INFERLENS_PUBLIC_URL", "https://inferlens.latentaxis.io")
+EMAIL_COOKIE_NAME = "inferlens_email"
+EMAIL_COOKIE_DAYS = 90
+
+
+@st.cache_resource
+def _cookie_manager() -> stx.CookieManager:
+    """Process-wide cookie manager (component state must be cached)."""
+    return stx.CookieManager(key="inferlens_cookie_mgr")
+
+
+cookie_manager = _cookie_manager()
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +361,25 @@ _is_admin = bool(ADMIN_TOKEN) and st.query_params.get("admin") == ADMIN_TOKEN
 
 
 # ---------------------------------------------------------------------------
+# Persistent email via cookie — auto-login on return visits
+# ---------------------------------------------------------------------------
+def _hydrate_email_from_cookie():
+    """If a valid email cookie exists and session has no email, adopt it."""
+    if st.session_state.email:
+        return
+    try:
+        saved = cookie_manager.get(EMAIL_COOKIE_NAME)
+    except Exception:
+        saved = None
+    if saved and isinstance(saved, str) and "@" in saved:
+        st.session_state.email = saved
+        analytics.upsert_session(saved)
+
+
+_hydrate_email_from_cookie()
+
+
+# ---------------------------------------------------------------------------
 # KB helpers
 # ---------------------------------------------------------------------------
 def _kb_from_bytes(
@@ -464,10 +495,11 @@ def _render_sources(sources: list[Chunk]) -> str:
 @st.dialog("Welcome to InferLens")
 def _email_gate():
     st.markdown(
-        "Enter your email to continue. We use it to rate-limit demo usage "
-        "(25 queries / 24 hours) and occasionally reach out about enterprise "
-        "deployments. No spam — promise."
+        f"Enter your email to continue. We use it to rate-limit demo usage "
+        f"({analytics.RATE_LIMIT_PER_MONTH} queries / month, resets on the 1st) "
+        f"and occasionally reach out about enterprise deployments. No spam — promise."
     )
+    st.caption("Your email is saved in a cookie so you won't need to re-enter it.")
     email_input = st.text_input("Work email", key="email_input_field")
     if st.button("Continue", use_container_width=True):
         cleaned = (email_input or "").strip().lower()
@@ -476,7 +508,27 @@ def _email_gate():
             return
         st.session_state.email = cleaned
         analytics.upsert_session(cleaned)
+        # Persist email in a cookie for 90 days
+        try:
+            expires_at = _dt.datetime.now() + _dt.timedelta(days=EMAIL_COOKIE_DAYS)
+            cookie_manager.set(
+                EMAIL_COOKIE_NAME,
+                cleaned,
+                expires_at=expires_at,
+                key="set_email_cookie",
+            )
+        except Exception:
+            pass  # Cookie write failure shouldn't block login
         st.rerun()
+
+
+def _logout():
+    """Clear session email and delete the persistence cookie."""
+    st.session_state.email = None
+    try:
+        cookie_manager.delete(EMAIL_COOKIE_NAME, key="delete_email_cookie")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -497,7 +549,7 @@ def _render_admin():
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total queries", stats["total_queries"])
     c2.metric("Unique emails", stats["unique_emails"])
-    c3.metric("Queries (24h)", stats["queries_last_24h"])
+    c3.metric("Queries this month", stats["queries_this_month"])
     c4.metric("Avg latency", f"{stats['avg_latency_ms']} ms")
 
     st.markdown("### Top documents")
@@ -528,8 +580,9 @@ def _run_query(query: str, kb: dict) -> None:
         limited, count = analytics.is_rate_limited(email)
         if limited:
             st.error(
-                f"Daily rate limit reached ({count} queries in the last 24h). "
-                f"Try again tomorrow or contact us for extended demo access."
+                f"Monthly rate limit reached ({count} of {analytics.RATE_LIMIT_PER_MONTH} "
+                f"queries used this month). Resets on the 1st, or contact us for "
+                f"extended demo access."
             )
             return
 
@@ -723,17 +776,23 @@ def _render_sidebar():
                     except Exception as exc:
                         st.error(f"Summarization failed: {exc}")
 
-        # Usage display
+        # Usage display + logout
         if st.session_state.get("email"):
             _, count = analytics.is_rate_limited(st.session_state.email)
-            remaining = max(0, analytics.RATE_LIMIT_PER_DAY - count)
+            remaining = max(0, analytics.RATE_LIMIT_PER_MONTH - count)
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             st.markdown(
-                f"<p style='font-size:10px;color:#6b7280;text-align:center;'>"
-                f"{remaining} of {analytics.RATE_LIMIT_PER_DAY} queries remaining today"
+                f"<p style='font-size:10px;color:#6b7280;text-align:center;margin-bottom:4px;'>"
+                f"{remaining} of {analytics.RATE_LIMIT_PER_MONTH} queries remaining this month"
+                f"</p>"
+                f"<p style='font-size:10px;color:#4b5563;text-align:center;margin-bottom:10px;'>"
+                f"Resets on the 1st &nbsp;·&nbsp; {st.session_state.email}"
                 f"</p>",
                 unsafe_allow_html=True,
             )
+            if st.button("Log out", use_container_width=True, key="logout_btn"):
+                _logout()
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------

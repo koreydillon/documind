@@ -13,13 +13,21 @@ external store.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "inferlens.db"
-RATE_LIMIT_PER_DAY = 25  # queries per email per rolling 24h
-RATE_LIMIT_WINDOW_HOURS = 24
+# DB path is configurable so Render users can point at a persistent disk
+# (e.g. set INFERLENS_DB_PATH=/var/data/inferlens.db and mount a Render disk
+# to /var/data). Falls back to the local code directory otherwise —
+# ephemeral on platforms like Render Starter, which is fine for dev.
+DB_PATH = Path(
+    os.getenv("INFERLENS_DB_PATH", str(Path(__file__).parent / "inferlens.db"))
+)
+
+# Rate limit is enforced per calendar month (UTC), resetting on the 1st.
+RATE_LIMIT_PER_MONTH = 200
 
 
 def _connect() -> sqlite3.Connection:
@@ -30,6 +38,7 @@ def _connect() -> sqlite3.Connection:
 
 def init_db() -> None:
     """Create tables + indexes if they don't exist. Safe to call every run."""
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = _connect()
     conn.executescript(
         """
@@ -98,23 +107,27 @@ def upsert_session(email: str) -> None:
     conn.close()
 
 
-def count_queries_last_24h(email: str) -> int:
-    cutoff = (
-        datetime.now(timezone.utc) - timedelta(hours=RATE_LIMIT_WINDOW_HOURS)
-    ).isoformat()
+def _month_start_iso() -> str:
+    """Return ISO timestamp for the first moment of the current month (UTC)."""
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return month_start.isoformat()
+
+
+def count_queries_this_month(email: str) -> int:
     conn = _connect()
     row = conn.execute(
-        "SELECT COUNT(*) AS c FROM queries WHERE email = ? AND ts > ?",
-        (email, cutoff),
+        "SELECT COUNT(*) AS c FROM queries WHERE email = ? AND ts >= ?",
+        (email, _month_start_iso()),
     ).fetchone()
     conn.close()
     return row["c"] if row else 0
 
 
 def is_rate_limited(email: str) -> tuple[bool, int]:
-    """Return (is_limited, count_in_window)."""
-    count = count_queries_last_24h(email)
-    return count >= RATE_LIMIT_PER_DAY, count
+    """Return (is_limited, count_this_month)."""
+    count = count_queries_this_month(email)
+    return count >= RATE_LIMIT_PER_MONTH, count
 
 
 def get_stats() -> dict:
@@ -141,6 +154,12 @@ def get_stats() -> dict:
     ).fetchall()
     recent = [dict(r) for r in recent_rows]
 
+    queries_this_month_row = conn.execute(
+        "SELECT COUNT(*) FROM queries WHERE ts >= ?",
+        (_month_start_iso(),),
+    ).fetchone()
+    queries_this_month = queries_this_month_row[0] if queries_this_month_row else 0
+
     queries_today_row = conn.execute(
         "SELECT COUNT(*) FROM queries WHERE ts > ?",
         ((datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(),),
@@ -151,6 +170,7 @@ def get_stats() -> dict:
     return {
         "total_queries": total,
         "unique_emails": unique_emails,
+        "queries_this_month": queries_this_month,
         "queries_last_24h": queries_today,
         "avg_latency_ms": avg_latency,
         "top_docs": top_docs,
