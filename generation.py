@@ -1,11 +1,11 @@
 """
 generation.py
 -------------
-Wraps all calls to the Anthropic API.
+Anthropic API wrappers for grounded Q&A and full-document summarisation.
 
-Two entry points are provided:
-  * ``answer_from_context``  — RAG-style Q&A grounded in retrieved chunks.
-  * ``summarize_document``   — Free-form structured summary of a full document.
+The Q&A prompt now instructs Claude to emit inline ``[1]``, ``[2]`` citation
+markers tied to numbered source chunks so the UI can render clickable source
+references inline in the answer text.
 """
 
 from __future__ import annotations
@@ -16,38 +16,18 @@ import anthropic
 import streamlit as st
 from dotenv import load_dotenv
 
-# Load from .env when running locally (no-op if file doesn't exist)
+from ingestion import Chunk
+
 load_dotenv()
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-MODEL_ID = "claude-sonnet-4-20250514"
+MODEL_ID = "claude-sonnet-4-5-20250929"
 MAX_TOKENS_ANSWER = 1024
 MAX_TOKENS_SUMMARY = 2048
 
-# Summarisation truncation: Claude's context window is large but we cap the
-# text sent to avoid excessive token costs on very large PDFs.
-SUMMARY_CHAR_LIMIT = 40_000  # ~10 000 words — enough for a solid summary
+SUMMARY_CHAR_LIMIT = 40_000
 
 
 def _get_client() -> anthropic.Anthropic:
-    """Instantiate and return an Anthropic client.
-
-    The API key is read from the ``ANTHROPIC_API_KEY`` environment variable
-    (populated via python-dotenv from ``.env``).
-
-    Returns
-    -------
-    anthropic.Anthropic
-        Configured Anthropic SDK client.
-
-    Raises
-    ------
-    EnvironmentError
-        If the environment variable is absent.
-    """
-    # Prefer Streamlit secrets (used on Streamlit Cloud), fall back to env var
     try:
         api_key = st.secrets.get("ANTHROPIC_API_KEY")
     except Exception:
@@ -61,47 +41,33 @@ def _get_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
-def answer_from_context(query: str, context_chunks: list[str]) -> str:
-    """Generate a grounded answer using RAG-retrieved chunks as context.
+def answer_from_context(query: str, context_chunks: list[Chunk]) -> str:
+    """Generate an answer grounded in the retrieved chunks.
 
-    The system prompt instructs the model to answer *only* from the supplied
-    context and to cite the relevant passage when possible.  If the context
-    does not contain enough information the model is instructed to say so
-    explicitly rather than hallucinating.
-
-    Parameters
-    ----------
-    query:
-        The user's natural-language question.
-    context_chunks:
-        List of document chunks retrieved by the FAISS nearest-neighbour
-        search (ordered most-relevant first).
-
-    Returns
-    -------
-    str
-        The model's plain-text answer.
+    Claude is instructed to emit ``[N]`` citation markers inline — these are
+    1-indexed to match the passage numbering sent in the prompt. The UI then
+    renders those markers as clickable references to the source passage list.
     """
     client = _get_client()
 
-    # Format the retrieved chunks as a numbered list for easy citation
     formatted_context = "\n\n".join(
-        f"[Passage {i + 1}]\n{chunk}" for i, chunk in enumerate(context_chunks)
+        f"[{i + 1}] (page {chunk.page})\n{chunk.text}"
+        for i, chunk in enumerate(context_chunks)
     )
 
     system_prompt = (
-        "You are a precise document-analysis assistant. "
-        "Answer the question using ONLY the context passages provided below. "
-        "If the answer is not contained in the context, say explicitly: "
+        "You are a precise document-analysis assistant for enterprise users. "
+        "Answer the question using ONLY the numbered context passages below. "
+        "Cite the passages you used inline with bracketed numbers like [1], [2], [3] "
+        "immediately after the claim they support. Multiple citations are fine: [1][3]. "
+        "Every factual claim in your answer MUST be followed by a citation marker. "
+        "If the context does not contain enough information to answer, reply exactly: "
         "'The document does not contain enough information to answer this question.' "
-        "When your answer is supported by a specific passage, reference it as "
-        "'(Passage N)' at the end of the relevant sentence."
+        "Do not invent facts, page numbers, or passages that were not provided."
     )
 
     user_message = (
-        f"Context passages from the document:\n\n"
-        f"{formatted_context}\n\n"
-        f"Question: {query}"
+        f"Context passages:\n\n{formatted_context}\n\nQuestion: {query}"
     )
 
     response = client.messages.create(
@@ -115,22 +81,6 @@ def answer_from_context(query: str, context_chunks: list[str]) -> str:
 
 
 def summarize_document(full_text: str) -> str:
-    """Produce a structured summary of *full_text* using the Anthropic API.
-
-    Very long documents are truncated to ``SUMMARY_CHAR_LIMIT`` characters
-    before being sent.  A note is appended to the prompt when truncation
-    occurs so the model can qualify its summary accordingly.
-
-    Parameters
-    ----------
-    full_text:
-        The complete extracted text of the uploaded PDF document.
-
-    Returns
-    -------
-    str
-        A structured plain-text summary with clearly labelled sections.
-    """
     client = _get_client()
 
     truncated = len(full_text) > SUMMARY_CHAR_LIMIT
