@@ -1,37 +1,47 @@
 """
 embeddings.py
 -------------
-Sentence-BERT embeddings + FAISS index management.
+Embeddings via fastembed (ONNX Runtime) + FAISS index management.
+
+Uses the same all-MiniLM-L6-v2 model as sentence-transformers but runs it
+through ONNX Runtime instead of PyTorch, which cuts runtime memory from
+~400 MB to ~100 MB — the difference between fitting on Render's Starter
+plan (512 MB) and OOM-ing.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 from ingestion import Chunk
 
-_MODEL: SentenceTransformer | None = None
-MODEL_NAME = "all-MiniLM-L6-v2"
+_MODEL: TextEmbedding | None = None
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def get_model() -> SentenceTransformer:
+def get_model() -> TextEmbedding:
+    """Return the process-wide embedding model, loading it on first call.
+
+    fastembed lazily downloads the ONNX weights to a local cache on first
+    use (~90 MB). Subsequent instantiations are instant.
+    """
     global _MODEL
     if _MODEL is None:
-        _MODEL = SentenceTransformer(MODEL_NAME)
+        _MODEL = TextEmbedding(model_name=MODEL_NAME)
     return _MODEL
 
 
 def embed_texts(texts: list[str]) -> np.ndarray:
-    """Embed a list of plain strings (used for queries)."""
+    """Embed a list of plain strings. Used for queries."""
     model = get_model()
-    embeddings = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
-    return embeddings.astype(np.float32)
+    vectors = list(model.embed(texts))
+    return np.array(vectors, dtype=np.float32)
 
 
 def embed_chunks(chunks: list[Chunk]) -> np.ndarray:
-    """Embed a list of Chunk objects (used at index-build time)."""
+    """Embed a list of Chunk objects. Used at index-build time."""
     return embed_texts([c.text for c in chunks])
 
 
