@@ -15,6 +15,7 @@ Features:
 
 from __future__ import annotations
 
+import base64
 import datetime as _dt
 import os
 import re
@@ -76,6 +77,33 @@ ICON_LINK = svg(
     '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
     '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 )
+
+
+# ---------------------------------------------------------------------------
+# Chat avatars — brand-aligned data URIs, replaces Streamlit's default icons
+# ---------------------------------------------------------------------------
+def _svg_data_uri(svg_markup: str) -> str:
+    return "data:image/svg+xml;base64," + base64.b64encode(svg_markup.encode()).decode()
+
+
+_USER_AVATAR_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+    '<rect width="32" height="32" rx="16" fill="#1f2330"/>'
+    '<circle cx="16" cy="13" r="5" fill="#d97757"/>'
+    '<path d="M6 27c1-5 5-8 10-8s9 3 10 8" fill="#d97757"/>'
+    "</svg>"
+)
+
+_ASSISTANT_AVATAR_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+    '<rect width="32" height="32" rx="8" fill="#2a1a14" stroke="#d97757" stroke-width="1.5"/>'
+    '<rect x="7" y="7" width="18" height="18" rx="4" fill="none" stroke="#d97757" stroke-width="1.5"/>'
+    '<rect x="12" y="12" width="8" height="8" rx="1.5" fill="#d97757"/>'
+    "</svg>"
+)
+
+USER_AVATAR = _svg_data_uri(_USER_AVATAR_SVG)
+ASSISTANT_AVATAR = _svg_data_uri(_ASSISTANT_AVATAR_SVG)
 
 
 # ---------------------------------------------------------------------------
@@ -593,10 +621,10 @@ def _run_query(query: str, kb: dict) -> None:
         return
 
     # Render user message + streaming assistant message
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=USER_AVATAR):
         st.write(query)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
         placeholder = st.empty()
         full_answer = ""
         try:
@@ -830,7 +858,7 @@ def _render_empty_state():
 
 def _render_chat_history(kb: dict) -> None:
     for entry_idx, entry in enumerate(kb["chat"]):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=USER_AVATAR):
             st.write(entry["question"])
             ts = entry.get("timestamp", "")
             wc = len(entry["question"].split())
@@ -839,7 +867,7 @@ def _render_chat_history(kb: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
             rendered = _render_answer_with_citations(entry["answer"], entry.get("sources", []))
             sources_html = _render_sources(entry.get("sources", []))
             st.markdown(rendered + sources_html, unsafe_allow_html=True)
