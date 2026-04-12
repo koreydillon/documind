@@ -55,13 +55,7 @@ EMAIL_COOKIE_NAME = "inferlens_email"
 EMAIL_COOKIE_DAYS = 90
 
 
-@st.cache_resource
-def _cookie_manager() -> stx.CookieManager:
-    """Process-wide cookie manager (component state must be cached)."""
-    return stx.CookieManager(key="inferlens_cookie_mgr")
-
-
-cookie_manager = _cookie_manager()
+cookie_manager = stx.CookieManager(key="inferlens_cookie_mgr")
 
 
 # ---------------------------------------------------------------------------
