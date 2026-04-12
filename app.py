@@ -315,7 +315,7 @@ def _init_state():
         "pending_query": None,
         "pending_share": None,        # (doc_slug, question) from share URL
         "share_processed": False,
-        "show_share_for_entry": None, # index of chat entry to show share UI for
+        "last_upload_file_id": None,  # tracks the active file_uploader upload
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -660,14 +660,18 @@ def _render_sidebar():
             key="pdf_uploader",
         )
         if uploaded_file is not None:
-            existing_upload = any(
-                kb["source"] == "upload" and kb["name"] == uploaded_file.name
-                for kb in st.session_state.kbs.values()
-            )
-            if not existing_upload:
-                with st.spinner("Indexing upload..."):
-                    _add_upload_kb(uploaded_file.name, uploaded_file.read())
-                st.rerun()
+            # Streamlit assigns a unique file_id per upload; use it to detect
+            # genuinely new uploads (rather than re-processing the same file
+            # on every rerun). getvalue() is buffer-safe across reruns.
+            current_file_id = getattr(uploaded_file, "file_id", None) or uploaded_file.name
+            if st.session_state.last_upload_file_id != current_file_id:
+                st.session_state.last_upload_file_id = current_file_id
+                try:
+                    with st.spinner(f"Indexing {uploaded_file.name}..."):
+                        _add_upload_kb(uploaded_file.name, uploaded_file.getvalue())
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Failed to index {uploaded_file.name}: {exc}")
 
         # Active KB stats + actions
         kb = _active_kb()
@@ -799,17 +803,16 @@ def _render_chat_history(kb: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-            # Share button — only for sample KBs
-            if kb["source"] == "sample":
-                share_col1, share_col2 = st.columns([1, 5])
-                with share_col1:
-                    if st.button("Share", key=f"share_{kb['slug']}_{entry_idx}"):
-                        st.session_state.show_share_for_entry = (kb["slug"], entry_idx)
-                if st.session_state.show_share_for_entry == (kb["slug"], entry_idx):
-                    token = sharing.encode_share(kb["slug"], entry["question"])
-                    share_url = f"{PUBLIC_BASE_URL}/?s={token}"
+            # Share link — only for sample KBs (expander always visible)
+            if kb["source"] == "sample" and entry.get("sources"):
+                token = sharing.encode_share(kb["slug"], entry["question"])
+                share_url = f"{PUBLIC_BASE_URL}/?s={token}"
+                with st.expander("Share this answer"):
                     st.code(share_url, language=None)
-                    st.caption("Copy this link — anyone who opens it will see the same answer regenerate.")
+                    st.caption(
+                        "Copy this link — anyone who opens it will land on this "
+                        "exact question with the same sample document loaded."
+                    )
 
 
 def _render_suggested_questions(kb: dict) -> None:
