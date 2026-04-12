@@ -19,7 +19,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz  # PyMuPDF 1.24+ — preferred import name
+except ImportError:
+    import fitz  # Legacy fallback for older PyMuPDF
 
 
 @dataclass
