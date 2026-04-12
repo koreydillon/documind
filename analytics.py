@@ -1,20 +1,23 @@
 """
 analytics.py
 ------------
-Lightweight SQLite logging for InferLens usage analytics and per-email
-rate limiting.
+SQLite-backed analytics, rate limiting, and shared-document storage.
 
-The database lives at ``inferlens.db`` next to this file. On Render Starter
-the filesystem is ephemeral (resets on container restart), which is fine
-for a demo — we're logging usage patterns, not billing-critical data. For
-persistence across restarts, attach a Render disk or point the DB at an
-external store.
+Tables:
+    queries      — one row per user Q&A event for usage analytics
+    sessions     — one row per known email address
+    shared_docs  — uploaded PDFs serialized for share links (30 day TTL)
+
+The database lives at ``inferlens.db`` next to this file by default. For
+persistence across container restarts on Render, set ``INFERLENS_DB_PATH``
+to a path on a mounted disk (e.g. ``/var/data/inferlens.db``).
 """
 
 from __future__ import annotations
 
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,6 +31,10 @@ DB_PATH = Path(
 
 # Rate limit is enforced per calendar month (UTC), resetting on the 1st.
 RATE_LIMIT_PER_MONTH = 200
+
+# Shared upload config
+SHARED_DOC_MAX_BYTES = 10 * 1024 * 1024  # 10 MB per shared upload
+SHARED_DOC_TTL_DAYS = 30
 
 
 def _connect() -> sqlite3.Connection:
@@ -60,8 +67,78 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_queries_ts ON queries(ts);
         CREATE INDEX IF NOT EXISTS idx_queries_email ON queries(email);
+        CREATE TABLE IF NOT EXISTS shared_docs (
+            id TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            pdf_bytes BLOB NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            owner_email TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_shared_docs_expires ON shared_docs(expires_at);
         """
     )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Shared document storage (for uploaded-PDF share links)
+# ---------------------------------------------------------------------------
+class SharedDocTooLargeError(Exception):
+    pass
+
+
+def store_shared_doc(
+    filename: str, pdf_bytes: bytes, owner_email: str | None = None
+) -> str:
+    """Store an uploaded PDF for sharing. Returns a unique share id.
+
+    Raises SharedDocTooLargeError if the document exceeds SHARED_DOC_MAX_BYTES.
+    """
+    if len(pdf_bytes) > SHARED_DOC_MAX_BYTES:
+        raise SharedDocTooLargeError(
+            f"Shared document exceeds {SHARED_DOC_MAX_BYTES // (1024 * 1024)} MB limit"
+        )
+    share_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=SHARED_DOC_TTL_DAYS)
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO shared_docs (id, filename, pdf_bytes, created_at, expires_at, owner_email) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (share_id, filename, pdf_bytes, now.isoformat(), expires.isoformat(), owner_email),
+    )
+    conn.commit()
+    conn.close()
+    return share_id
+
+
+def get_shared_doc(share_id: str) -> tuple[str, bytes] | None:
+    """Return (filename, pdf_bytes) for a share id, or None if expired/missing."""
+    _cleanup_expired_shares()
+    conn = _connect()
+    row = conn.execute(
+        "SELECT filename, pdf_bytes, expires_at FROM shared_docs WHERE id = ?",
+        (share_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    # Defensive TTL check in case cleanup hasn't run yet
+    try:
+        if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
+            return None
+    except Exception:
+        pass
+    return row["filename"], bytes(row["pdf_bytes"])
+
+
+def _cleanup_expired_shares() -> None:
+    """Delete shared docs past their expiry. Cheap enough to call on every read."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    conn.execute("DELETE FROM shared_docs WHERE expires_at < ?", (now_iso,))
     conn.commit()
     conn.close()
 

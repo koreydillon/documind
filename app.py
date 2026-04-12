@@ -420,12 +420,14 @@ def _kb_from_bytes(
         "slug": slug,
         "name": name,
         "source": source,
+        "pdf_bytes": pdf_bytes,  # retained so shareable uploads can be stored on demand
         "chunks": chunks,
         "faiss_index": faiss_index,
         "full_text": full_text,
         "page_count": page_count,
         "suggested_questions": suggested_questions or [],
         "chat": [],
+        "shared_id": None,  # set after user clicks "Share" on an upload
     }
 
 
@@ -884,16 +886,72 @@ def _render_chat_history(kb: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-            # Share link — only for sample KBs (expander always visible)
-            if kb["source"] == "sample" and entry.get("sources"):
-                token = sharing.encode_share(kb["slug"], entry["question"])
-                share_url = f"{PUBLIC_BASE_URL}/?s={token}"
-                with st.expander("Share this answer"):
-                    st.code(share_url, language=None)
-                    st.caption(
-                        "Copy this link — anyone who opens it will land on this "
-                        "exact question with the same sample document loaded."
+            # Share link — samples share instantly, uploads require opt-in
+            if entry.get("sources"):
+                if kb["source"] == "sample":
+                    token = sharing.encode_share("sample", kb["slug"], entry["question"])
+                    share_url = f"{PUBLIC_BASE_URL}/?s={token}"
+                    with st.expander("Share this answer"):
+                        st.code(share_url, language=None)
+                        st.caption(
+                            "Copy this link — anyone who opens it will land on this "
+                            "exact question with the same sample document loaded."
+                        )
+                else:
+                    _render_upload_share_ui(kb, entry, entry_idx)
+
+
+def _render_upload_share_ui(kb: dict, entry: dict, entry_idx: int) -> None:
+    """Render the share UI for an uploaded-document answer.
+
+    Uploaded PDFs are NOT uploaded server-side unless the user explicitly
+    clicks 'Generate share link' — respects privacy by default.
+    """
+    with st.expander("Share this answer"):
+        size_mb = len(kb["pdf_bytes"]) / (1024 * 1024)
+        too_big = len(kb["pdf_bytes"]) > analytics.SHARED_DOC_MAX_BYTES
+
+        if too_big:
+            st.warning(
+                f"This document is {size_mb:.1f} MB — too large to share. "
+                f"The share limit is "
+                f"{analytics.SHARED_DOC_MAX_BYTES // (1024 * 1024)} MB per upload."
+            )
+            return
+
+        st.caption(
+            f"Sharing will store your PDF on our server for "
+            f"{analytics.SHARED_DOC_TTL_DAYS} days. Anyone with the link can "
+            f"view the document and regenerate the same answer. Only share "
+            f"documents you're comfortable making public to recipients."
+        )
+
+        if not kb.get("shared_id"):
+            if st.button(
+                "Generate share link",
+                key=f"gen_share_{kb['slug']}_{entry_idx}",
+                use_container_width=True,
+            ):
+                try:
+                    share_id = analytics.store_shared_doc(
+                        filename=kb["name"],
+                        pdf_bytes=kb["pdf_bytes"],
+                        owner_email=st.session_state.get("email"),
                     )
+                    kb["shared_id"] = share_id
+                    st.rerun()
+                except analytics.SharedDocTooLargeError as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Could not generate share link: {exc}")
+        else:
+            token = sharing.encode_share("upload", kb["shared_id"], entry["question"])
+            share_url = f"{PUBLIC_BASE_URL}/?s={token}"
+            st.code(share_url, language=None)
+            st.caption(
+                f"Link valid for {analytics.SHARED_DOC_TTL_DAYS} days. "
+                f"Document size: {size_mb:.1f} MB."
+            )
 
 
 def _render_suggested_questions(kb: dict) -> None:
@@ -925,17 +983,35 @@ if not st.session_state.email:
 
 
 # ---------------------------------------------------------------------------
-# Handle pending share link (auto-load sample + queue question)
+# Handle pending share link (auto-load doc + queue question)
 # ---------------------------------------------------------------------------
 if st.session_state.pending_share:
-    share_doc, share_q = st.session_state.pending_share
+    share_kind, share_ref, share_q = st.session_state.pending_share
     st.session_state.pending_share = None
     try:
-        _add_sample_kb(share_doc)
-        st.session_state.pending_query = share_q
+        if share_kind == "sample":
+            _add_sample_kb(share_ref)
+        elif share_kind == "upload":
+            fetched = analytics.get_shared_doc(share_ref)
+            if fetched is None:
+                st.warning(
+                    "This shared document has expired or is no longer available."
+                )
+            else:
+                filename, pdf_bytes = fetched
+                _add_upload_kb(filename, pdf_bytes)
+                # Mark the new KB as already shared so the owner can re-share
+                # without re-uploading
+                kb = _active_kb()
+                if kb is not None:
+                    kb["shared_id"] = share_ref
+        else:
+            st.warning(f"Unknown share type: {share_kind}")
+        if share_q:
+            st.session_state.pending_query = share_q
         st.rerun()
     except Exception as exc:
-        st.warning(f"Could not load shared demo: {exc}")
+        st.warning(f"Could not load shared document: {exc}")
 
 
 # ---------------------------------------------------------------------------
