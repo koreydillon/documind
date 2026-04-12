@@ -62,7 +62,7 @@ cookie_manager = stx.CookieManager(key="inferlens_cookie_mgr")
 # ---------------------------------------------------------------------------
 # SVG icon helpers
 # ---------------------------------------------------------------------------
-def svg(path: str, size: int = 16, color: str = "#d97757") -> str:
+def svg(path: str, size: int = 16, color: str = "#a78bfa") -> str:
     return (
         f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
         f'stroke="{color}" stroke-width="1.6" stroke-linecap="round" '
@@ -89,16 +89,16 @@ def _svg_data_uri(svg_markup: str) -> str:
 _USER_AVATAR_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
     '<rect width="32" height="32" rx="16" fill="#1f2330"/>'
-    '<circle cx="16" cy="13" r="5" fill="#d97757"/>'
-    '<path d="M6 27c1-5 5-8 10-8s9 3 10 8" fill="#d97757"/>'
+    '<circle cx="16" cy="13" r="5" fill="#a78bfa"/>'
+    '<path d="M6 27c1-5 5-8 10-8s9 3 10 8" fill="#a78bfa"/>'
     "</svg>"
 )
 
 _ASSISTANT_AVATAR_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
-    '<rect width="32" height="32" rx="8" fill="#2a1a14" stroke="#d97757" stroke-width="1.5"/>'
-    '<rect x="7" y="7" width="18" height="18" rx="4" fill="none" stroke="#d97757" stroke-width="1.5"/>'
-    '<rect x="12" y="12" width="8" height="8" rx="1.5" fill="#d97757"/>'
+    '<rect width="32" height="32" rx="8" fill="#1a1329" stroke="#a78bfa" stroke-width="1.5"/>'
+    '<rect x="7" y="7" width="18" height="18" rx="4" fill="none" stroke="#a78bfa" stroke-width="1.5"/>'
+    '<rect x="12" y="12" width="8" height="8" rx="1.5" fill="#a78bfa"/>'
     "</svg>"
 )
 
@@ -138,14 +138,14 @@ st.markdown(
     }
 
     .stButton > button {
-        background: #d97757 !important; color: #fff !important;
+        background: #a78bfa !important; color: #fff !important;
         border: none !important; border-radius: 8px !important;
         font-weight: 500 !important; font-size: 13px !important;
         padding: 9px 14px !important;
         transition: background 0.15s, transform 0.1s !important;
     }
     .stButton > button:hover {
-        background: #c4623f !important; transform: translateY(-1px) !important;
+        background: #8b5cf6 !important; transform: translateY(-1px) !important;
     }
     .stButton > button:disabled {
         background: #2a2f3d !important; color: #6b7280 !important; cursor: not-allowed;
@@ -176,7 +176,7 @@ st.markdown(
         padding: 32px 36px; margin: 20px 0 28px 0;
     }
     .hero-kicker {
-        font-size: 10px; font-weight: 600; color: #d97757;
+        font-size: 10px; font-weight: 600; color: #a78bfa;
         text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px;
     }
     .hero-title {
@@ -202,8 +202,8 @@ st.markdown(
     .sample-card .tag {
         display: inline-block;
         font-size: 10px; font-weight: 600;
-        color: #d97757; background: #2a1a14;
-        border: 1px solid #4a2a1a; border-radius: 4px;
+        color: #a78bfa; background: #1a1329;
+        border: 1px solid #2d2445; border-radius: 4px;
         padding: 2px 7px; letter-spacing: 0.05em;
         text-transform: uppercase; margin-bottom: 10px;
     }
@@ -251,8 +251,8 @@ st.markdown(
 
     .cite {
         display: inline-block; font-size: 10px; font-weight: 700;
-        color: #d97757; background: #2a1a14;
-        border: 1px solid #4a2a1a; border-radius: 4px;
+        color: #a78bfa; background: #1a1329;
+        border: 1px solid #2d2445; border-radius: 4px;
         padding: 0 5px; margin: 0 2px;
         vertical-align: super; line-height: 1.2;
         cursor: help;
@@ -273,8 +273,8 @@ st.markdown(
     .source-num {
         flex-shrink: 0;
         font-size: 10px; font-weight: 700;
-        color: #d97757; background: #2a1a14;
-        border: 1px solid #4a2a1a; border-radius: 4px;
+        color: #a78bfa; background: #1a1329;
+        border: 1px solid #2d2445; border-radius: 4px;
         padding: 1px 6px; height: fit-content;
     }
     .source-meta {
@@ -302,7 +302,7 @@ st.markdown(
     }
     .app-footer .dot {
         width: 5px; height: 5px; border-radius: 50%;
-        background: #d97757; opacity: 0.7;
+        background: #a78bfa; opacity: 0.7;
     }
 
     .sidebar-brand {
@@ -314,14 +314,14 @@ st.markdown(
         letter-spacing: -0.01em;
     }
     .sidebar-brand .brand-tag {
-        font-size: 10px; font-weight: 500; color: #d97757 !important;
-        background: #2a1a14; border: 1px solid #4a2a1a; border-radius: 4px;
+        font-size: 10px; font-weight: 500; color: #a78bfa !important;
+        background: #1a1329; border: 1px solid #2d2445; border-radius: 4px;
         padding: 1px 6px; text-transform: uppercase; letter-spacing: 0.06em;
     }
 
     .kb-row-active {
         background: #1a1f2b !important;
-        border-color: #d97757 !important;
+        border-color: #a78bfa !important;
     }
 
     ::-webkit-scrollbar { width: 6px; height: 6px; }
