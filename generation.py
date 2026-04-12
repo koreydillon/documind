@@ -11,6 +11,7 @@ references inline in the answer text.
 from __future__ import annotations
 
 import os
+from typing import Generator
 
 import anthropic
 import streamlit as st
@@ -78,6 +79,50 @@ def answer_from_context(query: str, context_chunks: list[Chunk]) -> str:
     )
 
     return response.content[0].text
+
+
+def _build_qa_prompt(query: str, context_chunks: list[Chunk]) -> tuple[str, str]:
+    """Shared prompt builder for streaming and non-streaming Q&A paths."""
+    formatted_context = "\n\n".join(
+        f"[{i + 1}] (page {chunk.page})\n{chunk.text}"
+        for i, chunk in enumerate(context_chunks)
+    )
+    system_prompt = (
+        "You are a precise document-analysis assistant for enterprise users. "
+        "Answer the question using ONLY the numbered context passages below. "
+        "Cite the passages you used inline with bracketed numbers like [1], [2], [3] "
+        "immediately after the claim they support. Multiple citations are fine: [1][3]. "
+        "Every factual claim in your answer MUST be followed by a citation marker. "
+        "If the context does not contain enough information to answer, reply exactly: "
+        "'The document does not contain enough information to answer this question.' "
+        "Do not invent facts, page numbers, or passages that were not provided."
+    )
+    user_message = f"Context passages:\n\n{formatted_context}\n\nQuestion: {query}"
+    return system_prompt, user_message
+
+
+def stream_answer_from_context(
+    query: str,
+    context_chunks: list[Chunk],
+) -> Generator[str, None, None]:
+    """Yield Claude's answer token-by-token as it's generated.
+
+    Uses the Anthropic streaming API so the UI can render progressively via
+    ``st.write_stream``. After the generator is fully exhausted the caller
+    has the complete answer text and can then parse citation markers for
+    final formatted rendering.
+    """
+    client = _get_client()
+    system_prompt, user_message = _build_qa_prompt(query, context_chunks)
+
+    with client.messages.stream(
+        model=MODEL_ID,
+        max_tokens=MAX_TOKENS_ANSWER,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
 
 
 def summarize_document(full_text: str) -> str:
