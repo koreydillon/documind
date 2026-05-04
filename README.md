@@ -4,7 +4,7 @@
 
 **Live demo:** [inferlens.latentaxis.io](https://inferlens.latentaxis.io)
 
-A Retrieval-Augmented Generation (RAG) app that started as an academic capstone and grew into a deployed product. Upload a PDF, ask natural-language questions, and InferLens returns answers backed by semantic search over the document — with the exact retrieved chunks shown beneath each answer.
+A Retrieval-Augmented Generation (RAG) app that started as an academic capstone and grew into a deployed product. Upload a PDF, ask natural-language questions, and InferLens returns answers backed by semantic search over the document, with the exact retrieved chunks shown beneath each answer.
 
 ## Try it in 30 seconds
 
@@ -47,7 +47,7 @@ Embeddings stay in memory per session. SQLite handles analytics, rate limiting, 
 | `embeddings.py` | Sentence-BERT model + FAISS index construction |
 | `retrieval.py` | Query embedding + top-K nearest-chunk search |
 | `generation.py` | Claude API calls (Q&A + document summarization) |
-| `analytics.py` | SQLite — query log, session table, shared-doc store, monthly rate limit |
+| `analytics.py` | SQLite query log, session table, shared-doc store, monthly rate limit |
 | `samples.py` | Three pre-loaded demo PDFs generated at runtime via PyMuPDF |
 | `sharing.py` | Encode/decode shareable answer links (base64-JSON tokens) |
 | `Dockerfile` / `render.yaml` | Container build + Render deployment config |
@@ -79,7 +79,7 @@ Open http://localhost:8501.
 ## What I learned
 
 - **Chunking dominates.** 500-word overlapping windows beat both smaller (200) and larger (1000) windows on retrieval quality for legal/research PDFs. Smaller chunks fragmented multi-paragraph reasoning; larger chunks diluted relevance.
-- **Show the receipts.** Surfacing the retrieved chunks under each answer turned the app from "trust me" to "verify it" — completely changed how testers used it.
+- **Show the receipts.** Surfacing the retrieved chunks under each answer turned the app from "trust me" to "verify it." Completely changed how testers used it.
 - **Ship the samples.** A blank "upload your PDF" screen has bounce. Three pre-loaded documents with suggested questions cut time-to-aha to under a minute.
 - **Rate limit by email, not IP.** Cloud IPs are shared (everyone behind a corporate NAT looks like one user). Email-cookie limits gave a much better signal at minimal friction.
 
@@ -92,7 +92,7 @@ Open http://localhost:8501.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ---
 
