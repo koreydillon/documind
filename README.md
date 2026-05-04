@@ -1,6 +1,14 @@
-# AI-Powered Document Intelligence & Semantic Search
+# InferLens
 
-A Retrieval-Augmented Generation (RAG) application built as an academic capstone project.  Upload any PDF, ask natural-language questions, and receive grounded answers backed by semantic search over the document.
+> Ask any PDF a question. Get a grounded answer with the source passages cited.
+
+**Live demo:** [inferlens.latentaxis.io](https://inferlens.latentaxis.io)
+
+A Retrieval-Augmented Generation (RAG) app that started as an academic capstone and grew into a deployed product. Upload a PDF, ask natural-language questions, and InferLens returns answers backed by semantic search over the document — with the exact retrieved chunks shown beneath each answer.
+
+## Try it in 30 seconds
+
+The live demo at [inferlens.latentaxis.io](https://inferlens.latentaxis.io) ships with three pre-loaded sample documents (a lease, a research paper, a contract) so you can ask questions immediately without uploading anything. Each sample comes with three suggested questions a real evaluator would ask.
 
 ## Architecture
 
@@ -8,13 +16,13 @@ A Retrieval-Augmented Generation (RAG) application built as an academic capstone
 PDF Upload
    │
    ▼
-Text Extraction (PyMuPDF)
+Text Extraction  (PyMuPDF)
    │
    ▼
-Chunking (~500-word overlapping windows)
+Chunking         (~500-word overlapping windows)
    │
    ▼
-Embedding (all-MiniLM-L6-v2 via sentence-transformers)
+Embedding        (all-MiniLM-L6-v2 via sentence-transformers)
    │
    ▼
 FAISS IndexFlatL2  ◄──── User Query (embedded with same model)
@@ -22,82 +30,70 @@ FAISS IndexFlatL2  ◄──── User Query (embedded with same model)
    └──── Top-5 Nearest Chunks ────┘
                 │
                 ▼
-       Anthropic Claude (RAG prompt)
+       Anthropic Claude (RAG prompt with citations)
                 │
                 ▼
-         Grounded Answer + Source passages
+   Grounded Answer + Source passages + Share link
 ```
 
-## Project Structure
+Embeddings stay in memory per session. SQLite handles analytics, rate limiting, and 30-day shared-document storage. Deployed on Render with a persistent disk mounted at `/var/data` for the SQLite database.
 
-```
-capstone/
-├── app.py          # Streamlit UI and pipeline orchestration
-├── ingestion.py    # PDF extraction and text chunking
-├── embeddings.py   # Sentence-BERT model and FAISS index construction
-├── retrieval.py    # Query embedding and nearest-neighbour search
-├── generation.py   # Anthropic API calls (Q&A and summarisation)
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+## What's in here
 
-## Setup
+| File | What it does |
+|---|---|
+| `app.py` | Streamlit UI, session state, pipeline orchestration |
+| `ingestion.py` | PDF text extraction, chunking |
+| `embeddings.py` | Sentence-BERT model + FAISS index construction |
+| `retrieval.py` | Query embedding + top-K nearest-chunk search |
+| `generation.py` | Claude API calls (Q&A + document summarization) |
+| `analytics.py` | SQLite — query log, session table, shared-doc store, monthly rate limit |
+| `samples.py` | Three pre-loaded demo PDFs generated at runtime via PyMuPDF |
+| `sharing.py` | Encode/decode shareable answer links (base64-JSON tokens) |
+| `Dockerfile` / `render.yaml` | Container build + Render deployment config |
 
-### 1. Clone / enter the project directory
+## Run it locally
 
 ```bash
-cd capstone
-```
-
-### 2. Create and activate a virtual environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
+git clone https://github.com/koreydillon/inferlens.git
+cd inferlens
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 4. Configure your API key
-
-```bash
-cp .env.example .env
-# Open .env and replace 'your_key_here' with your actual Anthropic API key
-```
-
-### 5. Run the application
-
-```bash
+cp .env.example .env   # add your ANTHROPIC_API_KEY
 streamlit run app.py
 ```
 
-The app will open automatically at `http://localhost:8501`.
+Open http://localhost:8501.
 
-## Usage
+## Tech stack
 
-1. **Upload a PDF** using the sidebar uploader.  The document will be extracted, chunked, and indexed automatically (a spinner shows progress).
-2. **Check document stats** — page count and chunk count are shown in the sidebar once indexing completes.
-3. **Ask questions** in the main chat input.  Each answer includes a collapsed "Source passage(s)" expander showing the exact chunks retrieved.
-4. **Summarize** the entire document by clicking the "Summarize Document" button in the sidebar.
+| Layer | Choice | Why |
+|---|---|---|
+| Frontend | Streamlit | Fastest path from notebook to deployable web app |
+| Embedding model | `all-MiniLM-L6-v2` (sentence-transformers) | Tiny (~80MB), fast on CPU, great quality-per-byte for English |
+| Vector index | FAISS `IndexFlatL2` | Exact search; per-document indexes are small enough to skip approximation |
+| Generator | Claude (`claude-sonnet-4-5-20250929`) | Strong instruction-following + grounded answer behavior |
+| Storage | SQLite | Single-file, zero-ops, plenty for analytics + share-link TTL |
+| Hosting | Render (Docker) | Persistent disk for SQLite, predictable cold starts |
 
-## Dependencies
+## What I learned
 
-| Package | Purpose |
-|---|---|
-| `streamlit` | Web UI framework |
-| `pymupdf` | PDF text extraction |
-| `sentence-transformers` | all-MiniLM-L6-v2 embedding model |
-| `faiss-cpu` | Approximate/exact nearest-neighbour search |
-| `anthropic` | Claude API client |
-| `python-dotenv` | `.env` file loading |
+- **Chunking dominates.** 500-word overlapping windows beat both smaller (200) and larger (1000) windows on retrieval quality for legal/research PDFs. Smaller chunks fragmented multi-paragraph reasoning; larger chunks diluted relevance.
+- **Show the receipts.** Surfacing the retrieved chunks under each answer turned the app from "trust me" to "verify it" — completely changed how testers used it.
+- **Ship the samples.** A blank "upload your PDF" screen has bounce. Three pre-loaded documents with suggested questions cut time-to-aha to under a minute.
+- **Rate limit by email, not IP.** Cloud IPs are shared (everyone behind a corporate NAT looks like one user). Email-cookie limits gave a much better signal at minimal friction.
 
-## Notes
+## Roadmap
 
-- The FAISS index and chat history are stored in `st.session_state` and persist across reruns within the same browser session.
-- Very large PDFs are truncated to ~10 000 words for the summarisation feature to control token costs; Q&A is unaffected as it only sends the top-5 retrieved chunks.
-- The model used for generation is `claude-sonnet-4-20250514`.
+- Hybrid retrieval (BM25 + dense) for queries that lean on rare terms
+- Per-document index persistence so re-uploads don't re-embed
+- Streaming answers (currently buffered)
+- Multi-PDF cross-document Q&A
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+Built by [Korey Dillon](https://latentaxis.io) at [LatentAxis](https://latentaxis.io).

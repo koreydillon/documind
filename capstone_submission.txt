@@ -1,0 +1,7 @@
+Capstone Project: InferLens
+
+Direct link: https://inferlens.latentaxis.io
+
+This is a direct link to the live InferLens project, hosted on my own domain. When you open the link, it will prompt you to enter an email address. Once you type your email in, it will take you directly to the live, fully functional project.
+
+A walkthrough demo of the project is also shown in the accompanying presentation video.
